@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controle de Alertas Operacionais</title>
+<style>
+:root{--ink:#1c2530;--mut:#5d6977;--bg:#eef0f3;--card:#fff;--line:#d9dee5;--brand:#1f3a5f;--ok:#2f7d4f;--warn:#b7791f;--bad:#b42318;--r:8px}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+h1,h2,h3{margin:0}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink);padding:7px 12px;border-radius:var(--r)}
+button:hover{background:#f3f5f8}
+button.pri{background:var(--brand);border-color:var(--brand);color:#fff}
+button.pri:hover{background:#17304f}
+button.dng{color:var(--bad);border-color:#e7b4af}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #8fb3e8;outline-offset:1px}
+input,select,textarea{width:100%;padding:8px 10px;border:1px solid #b9c2cd;border-radius:var(--r);background:#fff}
+label{display:block;font-weight:600;margin:12px 0 4px}
+.hide{display:none!important}
+#login{max-width:360px;margin:12vh auto;padding:28px;background:var(--card);border-radius:12px;border:1px solid var(--line)}
+#login h1{font-size:21px;margin-bottom:4px}
+#login p{color:var(--mut);margin:0 0 8px}
+.err{color:var(--bad);min-height:20px;margin:10px 0 0;font-size:14px}
+header{background:var(--brand);color:#fff;padding:12px 20px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+header h1{font-size:19px}
+header span{opacity:.9;margin-right:10px}
+header button{background:transparent;color:#fff;border-color:#8aa0bd}
+main{max-width:1200px;margin:0 auto;padding:18px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--brand);border-radius:var(--r);padding:12px 16px}
+.kpi b{font-size:30px;display:block;line-height:1.1}
+.kpi small{color:var(--mut)}
+.kpi.a{border-left-color:var(--warn)}.kpi.e{border-left-color:var(--ok)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.bar input{flex:2 1 200px;width:auto}
+.bar select{flex:1 1 140px;width:auto}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#f6f7f9;font-size:13px;color:var(--mut)}
+td.acts{display:flex;flex-wrap:wrap;gap:6px}
+td.acts button{padding:4px 9px;font-size:13px}
+.placa{font-weight:700;letter-spacing:.5px}
+.tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:13px;font-weight:600}
+.tag.ab{background:#fdf0d5;color:#7a4b00}.tag.en{background:#dcf1e4;color:#1e5c38}
+.t{font-weight:700;white-space:nowrap}
+.t.old{color:var(--bad)}.t.mid{color:var(--warn)}.t.new{color:var(--ink)}.t.done{color:var(--mut);font-weight:500}
+.empty{padding:30px;text-align:center;color:var(--mut);background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+dialog{border:0;border-radius:12px;padding:22px;width:min(560px,94vw);max-height:92vh}
+dialog::backdrop{background:rgba(20,28,40,.55)}
+.row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+.hist li{padding:8px 0;border-bottom:1px solid var(--line)}
+.hist{list-style:none;padding:0;margin:12px 0 0}
+.hist small{color:var(--mut);display:block}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--r);z-index:99;max-width:92vw}
+#toast.bad{background:var(--bad)}
+@media(max-width:760px){
+  thead{display:none}
+  table,tbody,tr,td{display:block;width:100%}
+  tr{border-bottom:6px solid var(--bg);padding:6px 0}
+  td{border:0;padding:4px 12px}
+  td[data-l]::before{content:attr(data-l) ": ";color:var(--mut);font-size:13px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ TELA DE LOGIN ============ -->
+<section id="login">
+  <h1>Controle de Alertas Operacionais</h1>
+  <p>Entre com seu usuário e senha.</p>
+  <label for="lg">Usuário</label>
+  <input id="lg" autocomplete="username" autocapitalize="none">
+  <label for="pw">Senha</label>
+  <input id="pw" type="password" autocomplete="current-password">
+  <div class="err" id="lgErr"></div>
+  <div class="row"><button class="pri" id="btnEntrar">Entrar</button></div>
+</section>
+
+<!-- ============ PAINEL ============ -->
+<div id="app" class="hide">
+  <header>
+    <h1>Controle de Alertas</h1>
+    <div><span id="quem"></span><button id="btnSair">Sair</button></div>
+  </header>
+  <main>
+    <div class="kpis">
+      <div class="kpi a"><b id="kAb">0</b><small>Alertas em aberto</small></div>
+      <div class="kpi e"><b id="kEn">0</b><small>Alertas encerrados</small></div>
+      <div class="kpi"><b id="kTo">0</b><small>Total de alertas</small></div>
+    </div>
+    <div class="bar">
+      <input id="busca" placeholder="Buscar por placa ou Sensor inibido">
+      <select id="fSt">
+        <option value="">Todos os status</option>
+        <option>Em aberto</option>
+        <option>Encerrado</option>
+      </select>
+      <select id="fMo">
+        <option value="">Todos os motivos</option>
+        <option>Documentação</option>
+        <option>Lavador</option>
+        <option>Liberação/acompanhamento</option>
+        <option>Manutenção</option>
+        <option>OPI</option>
+        <option>Outro</option>
+      </select>
+      <select id="ord">
+        <option value="tempo">Ordenar: Em aberto, mais antigos primeiro</option>
+        <option value="recentes">Ordenar: Mais recentes primeiro</option>
+        <option value="antigos">Ordenar: Mais antigos primeiro</option>
+        <option value="placa">Ordenar: Placa A-Z</option>
+      </select>
+      <button class="pri" id="btnNovo">+ Novo alerta</button>
+    </div>
+    <div id="lista"></div>
+  </main>
+</div>
+
+<!-- ============ FORMULÁRIO (NOVO / EDITAR) ============ -->
+<dialog id="dlgForm">
+  <h2 id="fTitulo">Novo alerta</h2>
+  <input type="hidden" id="aId">
+  <label for="aPlaca">Placa do veículo</label>
+  <input id="aPlaca" maxlength="10" autocapitalize="characters">
+  <label for="aDesc">Sensor inibido</label>
+  <select id="aDesc"></select>
+  <div id="boxDescOutro" class="hide"><label for="aDescOutro">Descreva o sensor</label><input id="aDescOutro"></div>
+  <label for="aMotivo">Motivo</label>
+  <select id="aMotivo">
+    <option value="">Selecione…</option>
+    <option>Documentação</option>
+    <option>Lavador</option>
+    <option>Liberação/acompanhamento</option>
+    <option>Manutenção</option>
+    <option>OPI</option>
+    <option>Outro</option>
+  </select>
+  <div id="boxDet" class="hide"><label for="aDet">Detalhe do motivo</label><input id="aDet"></div>
+  <div id="boxOpi" class="hide"><label for="aOpi">Quem está realizando a OPI? *</label><input id="aOpi" placeholder="Nome de quem está realizando"></div>
+  <label for="aObs">Observações (opcional)</label>
+  <textarea id="aObs" rows="2"></textarea>
+  <div class="err" id="fErr"></div>
+  <div class="row"><button id="fCancel">Cancelar</button><button class="pri" id="fSalvar">Salvar alerta</button></div>
+</dialog>
+
+<!-- ============ HISTÓRICO ============ -->
+<dialog id="dlgHist">
+  <h2 id="hTitulo">Histórico</h2>
+  <ul class="hist" id="hLista"></ul>
+  <div class="row"><button id="hFechar">Fechar</button></div>
+</dialog>
+
+<div id="toast" class="hide"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+/* =====================================================================
+   CONFIGURAÇÃO — só estes itens podem precisar de alteração
+   ===================================================================== */
+const SUPABASE_URL = "https://khjmcoghpvnqtyhmhthv.supabase.co";
+const SUPABASE_KEY = "sb_publishable_h7HBN5XUibC2FXU1rFcNHA__hqPHkbf"; // chave PÚBLICA (nunca coloque a chave secreta aqui)
+// Contas que NÃO usam o padrão login@alertas.invalid:
+const EMAILS_ESPECIAIS = { "seguranca5": "seguranca5@email.com" };
+const FUSO = "America/Sao_Paulo";
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+let user = null, isAdmin = false, alertas = [], nomes = {};
+
+/* Lista única de sensores (a opção "Outro" é adicionada no final) */
+const SENSORES = ["Antena Satelital","Antena Satelital (Presença)","Área de Centro de Distribuição","Área de Checagem","Área de Parada Autorizada","Área de Parada em Cliente","Área de Risco","Bateria Backup","Bateria Principal","Botão de Pânico 1","Carreta (engate)","Ignição","Painel (violação)","Porta Motorista","Porta Passageiro","Rota Embarcada","Sensor de Freio","Velocidade"];
+
+(function montarSensores(){
+  $("aDesc").innerHTML = `<option value="">Selecione…</option>` +
+    SENSORES.concat("Outro").map(s => `<option>${s}</option>`).join("");
+})();
+
+/* ---------- utilidades ---------- */
+function normalizarPlaca(valor) {
+  const placa = String(valor || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // Formato antigo: ABC1234 -> ABC-1234
+  if (/^[A-Z]{3}[0-9]{4}$/.test(placa)) return placa.slice(0, 3) + "-" + placa.slice(3);
+  // Formato Mercosul: ABC1D23
+  return placa;
+}
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toast(msg, bad){
+  const t = $("toast"); t.textContent = msg; t.className = bad ? "bad" : "";
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.className = "hide", 4000);
+}
+function emailDoLogin(l){ return EMAILS_ESPECIAIS[l] || (l + "@alertas.invalid"); }
+
+/* Regra de data: se data_abertura vier só como data (AAAA-MM-DD), conta-se a partir
+   de 00:00 do horário de São Paulo (UTC-3). Se vier com hora, usa a hora real. */
+function inicio(v){
+  if(!v) return null;
+  const s = String(v);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + "T00:00:00-03:00") : new Date(s);
+  return isNaN(d) ? null : d;
+}
+function fmtData(v){
+  if(!v) return "—";
+  const s = String(v);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){ const [a,m,d] = s.split("-"); return `${d}/${m}/${a}`; }
+  const d = new Date(s);
+  return isNaN(d) ? "—" : d.toLocaleString("pt-BR", {timeZone: FUSO, dateStyle:"short", timeStyle:"short"});
+}
+function duracao(ms){
+  if(ms < 0) ms = 0;
+  const min = Math.floor(ms/60000), h = Math.floor(min/60), dias = Math.floor(h/24);
+  if(min < 60) return min + (min === 1 ? " minuto" : " minutos");
+  if(dias < 1) return h + (h === 1 ? " hora" : " horas");
+  if(dias < 30) return dias + (dias === 1 ? " dia" : " dias");
+  const meses = Math.floor(dias/30), r = dias % 30;   // mês = 30 dias
+  return meses + (meses === 1 ? " mês" : " meses") + (r ? " e " + r + (r === 1 ? " dia" : " dias") : "");
+}
+function tempoHtml(a){
+  const ini = inicio(a.data_abertura);
+  if(a.status === "Encerrado"){
+    const fim = inicio(a.data_encerramento);
+    if(ini && fim && fim >= ini) return `<span class="t done">Encerrado (${duracao(fim - ini)})</span>`;
+    return `<span class="t done">Encerrado</span>`;
+  }
+  if(!ini) return `<span class="t done">—</span>`;
+  const ms = Date.now() - ini.getTime(), dias = ms/864e5;
+  const cls = dias >= 30 ? "old" : dias >= 7 ? "mid" : "new";
+  return `<span class="t ${cls}" data-ini="${ini.getTime()}">${duracao(ms)}</span>`;
+}
+
+/* ---------- login ---------- */
+async function entrar(){
+  const login = $("lg").value.trim().toLowerCase(), senha = $("pw").value;
+  const err = $("lgErr"); err.textContent = "";
+  if(!login || !senha){ err.textContent = "Informe o usuário e a senha."; return; }
+  if(!/^[a-z0-9._-]{3,40}$/.test(login)){ err.textContent = "Usuário ou senha incorretos."; return; }
+  $("btnEntrar").disabled = true;
+  try {
+    const {error} = await db.auth.signInWithPassword({email: emailDoLogin(login), password: senha});
+    if(error){ err.textContent = "Usuário ou senha incorretos."; return; }
+    $("pw").value = "";
+  } catch(e) {
+    err.textContent = "Falha de comunicação. Tente novamente.";
+  } finally {
+    $("btnEntrar").disabled = false;
+  }
+}
+async function sair(){ await db.auth.signOut(); }
+
+async function iniciar(session){
+  if(!session){
+    user = null; isAdmin = false; alertas = [];
+    $("app").classList.add("hide"); $("login").classList.remove("hide"); return;
+  }
+  user = session.user;
+  $("login").classList.add("hide"); $("app").classList.remove("hide");
+  const {data: adm} = await db.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
+  isAdmin = !!adm;
+  const {data: perfil} = await db.from("profiles").select("nome,login").eq("id", user.id).maybeSingle();
+  $("quem").textContent = (perfil?.nome || perfil?.login || "Usuário") + (isAdmin ? " (administradora)" : "");
+  await carregar();
+}
+db.auth.onAuthStateChange((ev, session) => { if(ev === "SIGNED_IN" || ev === "SIGNED_OUT" || ev === "INITIAL_SESSION") iniciar(session); });
+
+/* ---------- dados ---------- */
+async function carregar(){
+  const [a, p] = await Promise.all([
+    db.from("alertas").select("*").limit(5000),
+    db.from("profiles").select("id,nome,login")
+  ]);
+  if(a.error){ toast("Não foi possível carregar os alertas: " + a.error.message, true); return; }
+  alertas = a.data || [];
+  nomes = {}; (p.data || []).forEach(x => nomes[x.id] = x.nome || x.login);
+  desenhar();
+}
+
+function desenhar(){
+  const ab = alertas.filter(a => a.status === "Em aberto").length, en = alertas.filter(a => a.status === "Encerrado").length;
+  $("kAb").textContent = ab; $("kEn").textContent = en; $("kTo").textContent = alertas.length;
+
+  const q = $("busca").value.trim().toLowerCase(), st = $("fSt").value, mo = $("fMo").value, o = $("ord").value;
+  let l = alertas.filter(a =>
+    (!st || a.status === st) && (!mo || a.motivo === mo) &&
+    (!q || (a.placa || "").toLowerCase().includes(q) || (a.descricao || "").toLowerCase().includes(q)));
+
+  // Data de abertura em milissegundos (null = sem data)
+  const t = a => { const d = inicio(a.data_abertura); return d ? d.getTime() : null; };
+  // Comparadores que sempre mandam alertas sem data para o fim
+  const asc  = (x, y) => { const a = t(x), b = t(y); if(a === null && b === null) return 0; if(a === null) return 1; if(b === null) return -1; return a - b; };
+  const desc = (x, y) => { const a = t(x), b = t(y); if(a === null && b === null) return 0; if(a === null) return 1; if(b === null) return -1; return b - a; };
+
+  l.sort((x, y) => {
+    if(o === "placa")    return (x.placa || "").localeCompare(y.placa || "");
+    if(o === "recentes") return desc(x, y);   // mais recente primeiro
+    if(o === "antigos")  return asc(x, y);    // mais antigo primeiro
+    // "tempo": abertos primeiro (mais antigos no topo), depois encerrados (mais recentes no topo)
+    if(x.status !== y.status) return x.status === "Em aberto" ? -1 : 1;
+    return x.status === "Em aberto" ? asc(x, y) : desc(x, y);
+  });
+
+  if(!l.length){ $("lista").innerHTML = `<div class="empty">Nenhum alerta encontrado. Use “Novo alerta” para cadastrar.</div>`; return; }
+  $("lista").innerHTML = `<table><thead><tr><th>Placa</th><th>Sensor inibido</th><th>Motivo</th><th>Abertura</th><th>Tempo em aberto</th><th>Status</th><th>Lançado por</th><th>Ações</th></tr></thead><tbody>` +
+    l.map(a => {
+      const aberto = a.status === "Em aberto";
+      let mot = esc(a.motivo);
+      if(a.motivo === "Outro" && a.motivo_detalhe) mot += ` <small>(${esc(a.motivo_detalhe)})</small>`;
+      if(a.motivo === "OPI" && a.motivo_detalhe) mot += ` <small>(Realizada por: ${esc(a.motivo_detalhe)})</small>`;
+      return `<tr>
+        <td data-l="Placa" class="placa">${esc(a.placa)}</td>
+        <td data-l="Sensor inibido">${esc(a.descricao)}${a.observacoes ? `<br><small style="color:var(--mut)">${esc(a.observacoes)}</small>` : ""}</td>
+        <td data-l="Motivo">${mot}</td>
+        <td data-l="Abertura">${fmtData(a.data_abertura)}</td>
+        <td data-l="Tempo">${tempoHtml(a)}</td>
+        <td data-l="Status"><span class="tag ${aberto ? "ab" : "en"}">${esc(a.status)}</span></td>
+        <td data-l="Lançado por">${esc(nomes[a.lancado_por] || "—")}</td>
+        <td class="acts">
+          <button data-a="edit" data-id="${a.id}">Editar</button>
+          <button data-a="${aberto ? "close" : "open"}" data-id="${a.id}">${aberto ? "Encerrar" : "Reabrir"}</button>
+          <button data-a="hist" data-id="${a.id}">Histórico</button>
+          ${isAdmin ? `<button class="dng" data-a="del" data-id="${a.id}">Excluir</button>` : ""}
+        </td></tr>`;
+    }).join("") + `</tbody></table>`;
+}
+
+/* Atualiza os contadores a cada 30 s, sem recarregar a página */
+setInterval(() => {
+  document.querySelectorAll("[data-ini]").forEach(e => e.textContent = duracao(Date.now() - Number(e.dataset.ini)));
+}, 30000);
+
+/* ---------- formulário ---------- */
+function abrirForm(a){
+  $("fTitulo").textContent = a ? "Editar alerta" : "Novo alerta";
+  $("aId").value = a ? a.id : "";
+  $("aPlaca").value = a ? a.placa || "" : "";
+
+  const conhecido = a && a.descricao && (SENSORES.includes(a.descricao) || a.descricao === "Outro");
+  $("aDesc").value = a ? (conhecido ? a.descricao : (a.descricao ? "Outro" : "")) : "";
+  $("aDescOutro").value = a && a.descricao && !conhecido ? a.descricao : "";
+
+  $("aMotivo").value = a ? a.motivo || "" : "";
+  $("aDet").value = a && a.motivo === "Outro" ? a.motivo_detalhe || "" : "";
+  $("aOpi").value = a && a.motivo === "OPI" ? a.motivo_detalhe || "" : "";
+  $("aObs").value = a ? a.observacoes || "" : "";
+
+  $("fErr").textContent = "";
+  trocaDesc();
+  trocaMotivo();
+  $("dlgForm").showModal();
+}
+
+function trocaMotivo(){
+  const m = $("aMotivo").value;
+  $("boxDet").classList.toggle("hide", m !== "Outro");
+  $("boxOpi").classList.toggle("hide", m !== "OPI");
+  if(m === "OPI") setTimeout(() => $("aOpi").focus(), 0);
+}
+
+function trocaDesc(){
+  $("boxDescOutro").classList.toggle("hide", $("aDesc").value !== "Outro");
+}
+
+async function salvar(){
+  const id = $("aId").value;
+  const err = $("fErr");
+  err.textContent = "";
+
+  const d = {
+    placa: normalizarPlaca($("aPlaca").value),
+    descricao: $("aDesc").value === "Outro" ? $("aDescOutro").value.trim() : $("aDesc").value,
+    motivo: $("aMotivo").value,
+    motivo_detalhe: $("aMotivo").value === "Outro"
+      ? $("aDet").value.trim()
+      : $("aMotivo").value === "OPI"
+        ? $("aOpi").value.trim()
+        : null,
+    observacoes: $("aObs").value.trim() || null
+  };
+
+  if(!d.placa || !$("aDesc").value || !d.motivo){
+    err.textContent = "Preencha placa, Sensor inibido e motivo.";
+    return;
+  }
+
+  if(!/^[A-Z]{3}-[0-9]{4}$/.test(d.placa) && !/^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(d.placa)){
+    err.textContent = "Placa inválida. Use o formato ABC-1234 ou ABC1D23.";
+    $("aPlaca").focus();
+    return;
+  }
+
+  if($("aDesc").value === "Outro" && !d.descricao){
+    err.textContent = "Descreva o Sensor inibido quando escolher “Outro”.";
+    $("aDescOutro").focus();
+    return;
+  }
+
+  if(d.motivo === "Outro" && !d.motivo_detalhe){
+    err.textContent = "Detalhe o motivo quando escolher “Outro”.";
+    $("aDet").focus();
+    return;
+  }
+
+  if(d.motivo === "OPI" && !d.motivo_detalhe){
+    err.textContent = "Informe quem está realizando a OPI.";
+    $("aOpi").focus();
+    return;
+  }
+
+  $("fSalvar").disabled = true;
+
+  try {
+    // A data e a hora de abertura são definidas pelo banco.
+    const r = id
+      ? await db.from("alertas").update(d).eq("id", id)
+      : await db.from("alertas").insert(d);
+
+    if(r.error){
+      err.textContent = "Não foi possível salvar: " + r.error.message;
+      return;
+    }
+
+    $("dlgForm").close();
+    toast(id ? "Alerta atualizado." : "Alerta cadastrado.");
+    await carregar();
+  } catch(e) {
+    err.textContent = "Falha de comunicação. Tente novamente.";
+  } finally {
+    $("fSalvar").disabled = false;
+  }
+}
+
+/* ---------- encerrar / reabrir / histórico / excluir ---------- */
+async function mudarStatus(id, status){
+  const msg = status === "Encerrado" ? "Encerrar este alerta?" : "Reabrir este alerta?";
+  if(!confirm(msg)) return;
+  const {error} = await db.from("alertas").update({status}).eq("id", id);
+  if(error){ toast("Não foi possível alterar: " + error.message, true); return; }
+  toast(status === "Encerrado" ? "Alerta encerrado." : "Alerta reaberto.");
+  await carregar();
+}
+async function verHistorico(id){
+  const a = alertas.find(x => String(x.id) === String(id));
+  $("hTitulo").textContent = "Histórico — " + (a?.placa || "");
+  $("hLista").innerHTML = "<li>Carregando…</li>"; $("dlgHist").showModal();
+  const {data, error} = await db.from("historico").select("*").eq("alerta_id", id).order("criado_em", {ascending: false});
+  if(error){ $("hLista").innerHTML = "<li>Erro ao carregar: " + esc(error.message) + "</li>"; return; }
+  $("hLista").innerHTML = data.length ? data.map(h =>
+    `<li><b>${esc(h.acao)}</b><small>${esc(h.usuario_nome || "—")} · ${new Date(h.criado_em).toLocaleString("pt-BR", {timeZone: FUSO, dateStyle:"short", timeStyle:"short"})}</small></li>`).join("")
+    : "<li>Nenhum registro.</li>";
+}
+async function excluir(id){
+  const a = alertas.find(x => String(x.id) === String(id));
+  if(!confirm(`EXCLUIR PERMANENTEMENTE o alerta da placa ${a?.placa || ""}?\n\nO alerta e todo o seu histórico serão apagados. Esta ação é IRREVERSÍVEL.`)) return;
+  const {error} = await db.rpc("excluir_alerta", {p_alerta_id: id});
+  if(error){ toast("Não foi possível excluir: " + error.message, true); return; }
+  toast("Alerta e histórico excluídos.");
+  await carregar();
+}
+
+/* ---------- eventos ---------- */
+$("btnEntrar").onclick = entrar;
+$("pw").onkeydown = $("lg").onkeydown = e => { if(e.key === "Enter") entrar(); };
+$("btnSair").onclick = sair;
+$("btnNovo").onclick = () => abrirForm(null);
+$("aMotivo").onchange = trocaMotivo;
+$("aDesc").onchange = trocaDesc;
+$("aPlaca").oninput = e => {
+  const valor = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  e.target.value = /^[A-Z]{3}[0-9]{4}$/.test(valor) ? valor.slice(0, 3) + "-" + valor.slice(3) : valor;
+};
+$("fSalvar").onclick = salvar;
+$("fCancel").onclick = () => $("dlgForm").close();
+$("hFechar").onclick = () => $("dlgHist").close();
+["busca","fSt","fMo","ord"].forEach(i => $(i).oninput = desenhar);
+$("lista").onclick = e => {
+  const b = e.target.closest("button[data-a]"); if(!b) return;
+  const id = b.dataset.id, a = alertas.find(x => String(x.id) === String(id));
+  ({edit: () => abrirForm(a), close: () => mudarStatus(id, "Encerrado"), open: () => mudarStatus(id, "Em aberto"),
+    hist: () => verHistorico(id), del: () => excluir(id)})[b.dataset.a]();
+};
+</script>
+</body>
+</html>
