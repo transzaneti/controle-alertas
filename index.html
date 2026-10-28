@@ -160,8 +160,7 @@ dialog::backdrop{background:rgba(20,28,40,.55)}
    CONFIGURAÇÃO — só estes itens podem precisar de alteração
    ===================================================================== */
 const SUPABASE_URL = "https://khjmcoghpvnqtyhmhthv.supabase.co";
-const SUPABASE_KEY = "sb_publishable_h7HBN5XUibC2FXU1rFcNHA__hqPHkbf"; // chave PÚBLICA (nunca coloque a chave secreta aqui)
-// Contas que NÃO usam o padrão login@alertas.invalid:
+const SUPABASE_KEY = "sb_publishable_h7HBN5XUibC2FXU1rFcNHA__hqPHkbf";
 const EMAILS_ESPECIAIS = { "seguranca5": "seguranca5@email.com" };
 const FUSO = "America/Sao_Paulo";
 
@@ -169,7 +168,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
 let user = null, isAdmin = false, alertas = [], nomes = {};
 
-/* Lista única de sensores (a opção "Outro" é adicionada no final) */
+/* Lista única de sensores */
 const SENSORES = ["Antena Satelital","Antena Satelital (Presença)","Área de Centro de Distribuição","Área de Checagem","Área de Parada Autorizada","Área de Parada em Cliente","Área de Risco","Bateria Backup","Bateria Principal","Botão de Pânico 1","Carreta (engate)","Ignição","Painel (violação)","Porta Motorista","Porta Passageiro","Rota Embarcada","Sensor de Freio","Velocidade"];
 
 (function montarSensores(){
@@ -180,9 +179,7 @@ const SENSORES = ["Antena Satelital","Antena Satelital (Presença)","Área de Ce
 /* ---------- utilidades ---------- */
 function normalizarPlaca(valor) {
   const placa = String(valor || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  // Formato antigo: ABC1234 -> ABC-1234
   if (/^[A-Z]{3}[0-9]{4}$/.test(placa)) return placa.slice(0, 3) + "-" + placa.slice(3);
-  // Formato Mercosul: ABC1D23
   return placa;
 }
 
@@ -193,14 +190,14 @@ function toast(msg, bad){
 }
 function emailDoLogin(l){ return EMAILS_ESPECIAIS[l] || (l + "@alertas.invalid"); }
 
-/* Regra de data: se data_abertura vier só como data (AAAA-MM-DD), conta-se a partir
-   de 00:00 do horário de São Paulo (UTC-3). Se vier com hora, usa a hora real. */
+/* Regra de data */
 function inicio(v){
   if(!v) return null;
   const s = String(v);
   const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + "T00:00:00-03:00") : new Date(s);
   return isNaN(d) ? null : d;
 }
+
 function fmtData(v){
   if(!v) return "—";
   const s = String(v);
@@ -208,25 +205,30 @@ function fmtData(v){
   const d = new Date(s);
   return isNaN(d) ? "—" : d.toLocaleString("pt-BR", {timeZone: FUSO, dateStyle:"short", timeStyle:"short"});
 }
+
 function duracao(ms){
   if(ms < 0) ms = 0;
   const min = Math.floor(ms/60000), h = Math.floor(min/60), dias = Math.floor(h/24);
   if(min < 60) return min + (min === 1 ? " minuto" : " minutos");
   if(dias < 1) return h + (h === 1 ? " hora" : " horas");
   if(dias < 30) return dias + (dias === 1 ? " dia" : " dias");
-  const meses = Math.floor(dias/30), r = dias % 30;   // mês = 30 dias
+  const meses = Math.floor(dias/30), r = dias % 30;
   return meses + (meses === 1 ? " mês" : " meses") + (r ? " e " + r + (r === 1 ? " dia" : " dias") : "");
 }
+
+/* CORREÇÃO: alertas encerrados mostram apenas "Encerrado" */
 function tempoHtml(a){
-  const ini = inicio(a.data_abertura);
   if(a.status === "Encerrado"){
-    const fim = inicio(a.data_encerramento);
-    if(ini && fim && fim >= ini) return `<span class="t done">Encerrado (${duracao(fim - ini)})</span>`;
     return `<span class="t done">Encerrado</span>`;
   }
+
+  const ini = inicio(a.data_abertura);
   if(!ini) return `<span class="t done">—</span>`;
-  const ms = Date.now() - ini.getTime(), dias = ms/864e5;
+
+  const ms = Date.now() - ini.getTime();
+  const dias = ms/864e5;
   const cls = dias >= 30 ? "old" : dias >= 7 ? "mid" : "new";
+
   return `<span class="t ${cls}" data-ini="${ini.getTime()}">${duracao(ms)}</span>`;
 }
 
@@ -237,6 +239,7 @@ async function entrar(){
   if(!login || !senha){ err.textContent = "Informe o usuário e a senha."; return; }
   if(!/^[a-z0-9._-]{3,40}$/.test(login)){ err.textContent = "Usuário ou senha incorretos."; return; }
   $("btnEntrar").disabled = true;
+
   try {
     const {error} = await db.auth.signInWithPassword({email: emailDoLogin(login), password: senha});
     if(error){ err.textContent = "Usuário ou senha incorretos."; return; }
@@ -247,6 +250,7 @@ async function entrar(){
     $("btnEntrar").disabled = false;
   }
 }
+
 async function sair(){ await db.auth.signOut(); }
 
 async function iniciar(session){
@@ -254,6 +258,7 @@ async function iniciar(session){
     user = null; isAdmin = false; alertas = [];
     $("app").classList.add("hide"); $("login").classList.remove("hide"); return;
   }
+
   user = session.user;
   $("login").classList.add("hide"); $("app").classList.remove("hide");
   const {data: adm} = await db.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
@@ -262,7 +267,10 @@ async function iniciar(session){
   $("quem").textContent = (perfil?.nome || perfil?.login || "Usuário") + (isAdmin ? " (administradora)" : "");
   await carregar();
 }
-db.auth.onAuthStateChange((ev, session) => { if(ev === "SIGNED_IN" || ev === "SIGNED_OUT" || ev === "INITIAL_SESSION") iniciar(session); });
+
+db.auth.onAuthStateChange((ev, session) => {
+  if(ev === "SIGNED_IN" || ev === "SIGNED_OUT" || ev === "INITIAL_SESSION") iniciar(session);
+});
 
 /* ---------- dados ---------- */
 async function carregar(){
@@ -270,43 +278,76 @@ async function carregar(){
     db.from("alertas").select("*").limit(5000),
     db.from("profiles").select("id,nome,login")
   ]);
+
   if(a.error){ toast("Não foi possível carregar os alertas: " + a.error.message, true); return; }
   alertas = a.data || [];
-  nomes = {}; (p.data || []).forEach(x => nomes[x.id] = x.nome || x.login);
+  nomes = {};
+  (p.data || []).forEach(x => nomes[x.id] = x.nome || x.login);
   desenhar();
 }
 
 function desenhar(){
-  const ab = alertas.filter(a => a.status === "Em aberto").length, en = alertas.filter(a => a.status === "Encerrado").length;
-  $("kAb").textContent = ab; $("kEn").textContent = en; $("kTo").textContent = alertas.length;
+  const ab = alertas.filter(a => a.status === "Em aberto").length;
+  const en = alertas.filter(a => a.status === "Encerrado").length;
 
-  const q = $("busca").value.trim().toLowerCase(), st = $("fSt").value, mo = $("fMo").value, o = $("ord").value;
+  $("kAb").textContent = ab;
+  $("kEn").textContent = en;
+  $("kTo").textContent = alertas.length;
+
+  const q = $("busca").value.trim().toLowerCase();
+  const st = $("fSt").value;
+  const mo = $("fMo").value;
+  const o = $("ord").value;
+
   let l = alertas.filter(a =>
-    (!st || a.status === st) && (!mo || a.motivo === mo) &&
-    (!q || (a.placa || "").toLowerCase().includes(q) || (a.descricao || "").toLowerCase().includes(q)));
+    (!st || a.status === st) &&
+    (!mo || a.motivo === mo) &&
+    (!q || (a.placa || "").toLowerCase().includes(q) ||
+      (a.descricao || "").toLowerCase().includes(q))
+  );
 
-  // Data de abertura em milissegundos (null = sem data)
-  const t = a => { const d = inicio(a.data_abertura); return d ? d.getTime() : null; };
-  // Comparadores que sempre mandam alertas sem data para o fim
-  const asc  = (x, y) => { const a = t(x), b = t(y); if(a === null && b === null) return 0; if(a === null) return 1; if(b === null) return -1; return a - b; };
-  const desc = (x, y) => { const a = t(x), b = t(y); if(a === null && b === null) return 0; if(a === null) return 1; if(b === null) return -1; return b - a; };
+  const t = a => {
+    const d = inicio(a.data_abertura);
+    return d ? d.getTime() : null;
+  };
+
+  const asc = (x, y) => {
+    const a = t(x), b = t(y);
+    if(a === null && b === null) return 0;
+    if(a === null) return 1;
+    if(b === null) return -1;
+    return a - b;
+  };
+
+  const desc = (x, y) => {
+    const a = t(x), b = t(y);
+    if(a === null && b === null) return 0;
+    if(a === null) return 1;
+    if(b === null) return -1;
+    return b - a;
+  };
 
   l.sort((x, y) => {
-    if(o === "placa")    return (x.placa || "").localeCompare(y.placa || "");
-    if(o === "recentes") return desc(x, y);   // mais recente primeiro
-    if(o === "antigos")  return asc(x, y);    // mais antigo primeiro
-    // "tempo": abertos primeiro (mais antigos no topo), depois encerrados (mais recentes no topo)
+    if(o === "placa") return (x.placa || "").localeCompare(y.placa || "");
+    if(o === "recentes") return desc(x, y);
+    if(o === "antigos") return asc(x, y);
     if(x.status !== y.status) return x.status === "Em aberto" ? -1 : 1;
     return x.status === "Em aberto" ? asc(x, y) : desc(x, y);
   });
 
-  if(!l.length){ $("lista").innerHTML = `<div class="empty">Nenhum alerta encontrado. Use “Novo alerta” para cadastrar.</div>`; return; }
+  if(!l.length){
+    $("lista").innerHTML = `<div class="empty">Nenhum alerta encontrado. Use “Novo alerta” para cadastrar.</div>`;
+    return;
+  }
+
   $("lista").innerHTML = `<table><thead><tr><th>Placa</th><th>Sensor inibido</th><th>Motivo</th><th>Abertura</th><th>Tempo em aberto</th><th>Status</th><th>Lançado por</th><th>Ações</th></tr></thead><tbody>` +
     l.map(a => {
       const aberto = a.status === "Em aberto";
       let mot = esc(a.motivo);
+
       if(a.motivo === "Outro" && a.motivo_detalhe) mot += ` <small>(${esc(a.motivo_detalhe)})</small>`;
       if(a.motivo === "OPI" && a.motivo_detalhe) mot += ` <small>(Realizada por: ${esc(a.motivo_detalhe)})</small>`;
+
       return `<tr>
         <td data-l="Placa" class="placa">${esc(a.placa)}</td>
         <td data-l="Sensor inibido">${esc(a.descricao)}${a.observacoes ? `<br><small style="color:var(--mut)">${esc(a.observacoes)}</small>` : ""}</td>
@@ -324,9 +365,11 @@ function desenhar(){
     }).join("") + `</tbody></table>`;
 }
 
-/* Atualiza os contadores a cada 30 s, sem recarregar a página */
+/* Atualiza os tempos dos alertas em aberto a cada 30 segundos */
 setInterval(() => {
-  document.querySelectorAll("[data-ini]").forEach(e => e.textContent = duracao(Date.now() - Number(e.dataset.ini)));
+  document.querySelectorAll("[data-ini]").forEach(e => {
+    e.textContent = duracao(Date.now() - Number(e.dataset.ini));
+  });
 }, 30000);
 
 /* ---------- formulário ---------- */
@@ -410,7 +453,6 @@ async function salvar(){
   $("fSalvar").disabled = true;
 
   try {
-    // A data e a hora de abertura são definidas pelo banco.
     const r = id
       ? await db.from("alertas").update(d).eq("id", id)
       : await db.from("alertas").insert(d);
@@ -434,50 +476,93 @@ async function salvar(){
 async function mudarStatus(id, status){
   const msg = status === "Encerrado" ? "Encerrar este alerta?" : "Reabrir este alerta?";
   if(!confirm(msg)) return;
+
   const {error} = await db.from("alertas").update({status}).eq("id", id);
-  if(error){ toast("Não foi possível alterar: " + error.message, true); return; }
+
+  if(error){
+    toast("Não foi possível alterar: " + error.message, true);
+    return;
+  }
+
   toast(status === "Encerrado" ? "Alerta encerrado." : "Alerta reaberto.");
   await carregar();
 }
+
 async function verHistorico(id){
   const a = alertas.find(x => String(x.id) === String(id));
   $("hTitulo").textContent = "Histórico — " + (a?.placa || "");
-  $("hLista").innerHTML = "<li>Carregando…</li>"; $("dlgHist").showModal();
-  const {data, error} = await db.from("historico").select("*").eq("alerta_id", id).order("criado_em", {ascending: false});
-  if(error){ $("hLista").innerHTML = "<li>Erro ao carregar: " + esc(error.message) + "</li>"; return; }
+  $("hLista").innerHTML = "<li>Carregando…</li>";
+  $("dlgHist").showModal();
+
+  const {data, error} = await db.from("historico")
+    .select("*")
+    .eq("alerta_id", id)
+    .order("criado_em", {ascending: false});
+
+  if(error){
+    $("hLista").innerHTML = "<li>Erro ao carregar: " + esc(error.message) + "</li>";
+    return;
+  }
+
   $("hLista").innerHTML = data.length ? data.map(h =>
-    `<li><b>${esc(h.acao)}</b><small>${esc(h.usuario_nome || "—")} · ${new Date(h.criado_em).toLocaleString("pt-BR", {timeZone: FUSO, dateStyle:"short", timeStyle:"short"})}</small></li>`).join("")
-    : "<li>Nenhum registro.</li>";
+    `<li><b>${esc(h.acao)}</b><small>${esc(h.usuario_nome || "—")} · ${new Date(h.criado_em).toLocaleString("pt-BR", {timeZone: FUSO, dateStyle:"short", timeStyle:"short"})}</small></li>`
+  ).join("") : "<li>Nenhum registro.</li>";
 }
+
 async function excluir(id){
   const a = alertas.find(x => String(x.id) === String(id));
+
   if(!confirm(`EXCLUIR PERMANENTEMENTE o alerta da placa ${a?.placa || ""}?\n\nO alerta e todo o seu histórico serão apagados. Esta ação é IRREVERSÍVEL.`)) return;
+
   const {error} = await db.rpc("excluir_alerta", {p_alerta_id: id});
-  if(error){ toast("Não foi possível excluir: " + error.message, true); return; }
+
+  if(error){
+    toast("Não foi possível excluir: " + error.message, true);
+    return;
+  }
+
   toast("Alerta e histórico excluídos.");
   await carregar();
 }
 
 /* ---------- eventos ---------- */
 $("btnEntrar").onclick = entrar;
-$("pw").onkeydown = $("lg").onkeydown = e => { if(e.key === "Enter") entrar(); };
+$("pw").onkeydown = $("lg").onkeydown = e => {
+  if(e.key === "Enter") entrar();
+};
+
 $("btnSair").onclick = sair;
 $("btnNovo").onclick = () => abrirForm(null);
 $("aMotivo").onchange = trocaMotivo;
 $("aDesc").onchange = trocaDesc;
+
 $("aPlaca").oninput = e => {
   const valor = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  e.target.value = /^[A-Z]{3}[0-9]{4}$/.test(valor) ? valor.slice(0, 3) + "-" + valor.slice(3) : valor;
+  e.target.value = /^[A-Z]{3}[0-9]{4}$/.test(valor)
+    ? valor.slice(0, 3) + "-" + valor.slice(3)
+    : valor;
 };
+
 $("fSalvar").onclick = salvar;
 $("fCancel").onclick = () => $("dlgForm").close();
 $("hFechar").onclick = () => $("dlgHist").close();
+
 ["busca","fSt","fMo","ord"].forEach(i => $(i).oninput = desenhar);
+
 $("lista").onclick = e => {
-  const b = e.target.closest("button[data-a]"); if(!b) return;
-  const id = b.dataset.id, a = alertas.find(x => String(x.id) === String(id));
-  ({edit: () => abrirForm(a), close: () => mudarStatus(id, "Encerrado"), open: () => mudarStatus(id, "Em aberto"),
-    hist: () => verHistorico(id), del: () => excluir(id)})[b.dataset.a]();
+  const b = e.target.closest("button[data-a]");
+  if(!b) return;
+
+  const id = b.dataset.id;
+  const a = alertas.find(x => String(x.id) === String(id));
+
+  ({
+    edit: () => abrirForm(a),
+    close: () => mudarStatus(id, "Encerrado"),
+    open: () => mudarStatus(id, "Em aberto"),
+    hist: () => verHistorico(id),
+    del: () => excluir(id)
+  })[b.dataset.a]();
 };
 </script>
 </body>
